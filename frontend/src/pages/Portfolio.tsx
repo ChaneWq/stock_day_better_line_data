@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { stockApi } from '../services/api';
 import { useStockStore } from '../store';
 import { StockPrice, StockMinute } from '../types';
 import { MiniChart } from '../components/charts';
 import { useAutoRefresh } from '../hooks/useStockData';
+import { calculateStrengthPercent, getStrengthColor } from '../utils/chartHelpers';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -37,6 +38,7 @@ export default function Portfolio() {
   const [refreshing, setRefreshing] = useState(false);
   const [columns, setColumns] = useState(2);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const [sortBy, setSortBy] = useState<'default' | 'strength' | 'change'>('default');
   const [cacheInfo, setCacheInfo] = useState<{ cached: number; total: number }>({ cached: 0, total: 0 });
 
   const currentGroup = groups.find(g => g.id === currentGroupId);
@@ -228,6 +230,23 @@ export default function Portfolio() {
 
   const getPriceColor = (percent: number) => percent >= 0 ? 'price-up' : 'price-down';
 
+  const sortedStockEntries = useMemo(() => {
+    const entries = Array.from(stockData.entries());
+    switch (sortBy) {
+      case 'strength':
+        return entries.sort((a, b) => {
+          const scoreA = calculateStrengthPercent(a[1].minutes || []);
+          const scoreB = calculateStrengthPercent(b[1].minutes || []);
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          return b[1].price.change_percent - a[1].price.change_percent;
+        });
+      case 'change':
+        return entries.sort((a, b) => b[1].price.change_percent - a[1].price.change_percent);
+      default:
+        return entries;
+    }
+  }, [stockData, sortBy]);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -298,6 +317,17 @@ export default function Portfolio() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Space>
               <Title level={4}>{currentGroup.name}</Title>
+              <Select
+                value={sortBy}
+                onChange={setSortBy}
+                size="small"
+                style={{ width: 120 }}
+                options={[
+                  { label: '默认排序', value: 'default' },
+                  { label: '强势优先', value: 'strength' },
+                  { label: '涨跌排序', value: 'change' },
+                ]}
+              />
             </Space>
             <Space>
               <Button 
@@ -341,9 +371,11 @@ export default function Portfolio() {
 
           {viewMode === 'grid' ? (
             <Row gutter={[16, 16]}>
-              {Array.from(stockData.entries()).map(([code, data]) => {
+              {sortedStockEntries.map(([code, data]) => {
                 const cached = getCachedStockData(code, aStockDate);
                 const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
+                const strengthPercent = calculateStrengthPercent(data.minutes || []);
+                const strengthColor = getStrengthColor(strengthPercent);
                 
                 return (
                   <Col xs={24} sm={24 / columns} key={code}>
@@ -365,13 +397,27 @@ export default function Portfolio() {
                             <Badge status="success" text="缓存" title={cacheTime} />
                           )}
                         </Space>
-                        <Button
-                          type="text"
-                          danger
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          onClick={(e) => { e.stopPropagation(); removeStockFromGroup(currentGroup.id, code); }}
-                        />
+                        <Space size={4} align="center">
+                          <span style={{ fontSize: 12, fontWeight: 600, color: strengthColor }}>
+                            强势 {strengthPercent}%
+                          </span>
+                          <Button
+                            type="text"
+                            danger
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            onClick={(e) => { e.stopPropagation(); removeStockFromGroup(currentGroup.id, code); }}
+                          />
+                        </Space>
+                      </div>
+                      <div style={{ width: '100%', height: 4, background: '#f0f0f0', borderRadius: 2, margin: '6px 0' }}>
+                        <div style={{ 
+                          width: `${strengthPercent}%`, 
+                          height: '100%', 
+                          background: strengthColor,
+                          borderRadius: 2,
+                          transition: 'width 0.3s ease'
+                        }} />
                       </div>
                       <MiniChart data={data.minutes || []} width={miniChartWidth} height={miniChartHeight} />
                     </Card>
@@ -381,9 +427,11 @@ export default function Portfolio() {
             </Row>
           ) : (
             <Space direction="vertical" style={{ width: '100%' }}>
-              {Array.from(stockData.entries()).map(([code, data]) => {
+              {sortedStockEntries.map(([code, data]) => {
                 const cached = getCachedStockData(code, aStockDate);
                 const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
+                const strengthPercent = calculateStrengthPercent(data.minutes || []);
+                const strengthColor = getStrengthColor(strengthPercent);
                 
                 return (
                   <Card key={code} hoverable onClick={() => navigate(`/stock/${code}`)}>
@@ -399,6 +447,18 @@ export default function Portfolio() {
                         {data.fromCache && (
                           <Badge status="success" text="缓存" title={cacheTime} />
                         )}
+                        <span style={{ fontSize: 13, fontWeight: 600, color: strengthColor }}>
+                          强势 {strengthPercent}%
+                        </span>
+                        <div style={{ width: 60, height: 4, background: '#f0f0f0', borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}>
+                          <div style={{ 
+                            width: `${strengthPercent}%`, 
+                            height: '100%', 
+                            background: strengthColor,
+                            borderRadius: 2,
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
                       </Space>
                       <Space>
                         <Button icon={<EyeOutlined />} onClick={() => navigate(`/stock/${code}`)}>
