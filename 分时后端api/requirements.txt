@@ -1,0 +1,10 @@
+Flask==2.3.3
+pandas==2.1.4
+mootdx==0.8.5
+numpy==1.26.2
+redis==5.0.1
+orjson==3.9.10
+flask-compress==1.14
+flask-caching==2.1.0
+gunicorn==21.2.0
+gevent==23.9.1
