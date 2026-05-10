@@ -1,0 +1,467 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { stockApi } from '../services/api';
+import { useStockStore } from '../store';
+import { StockPrice, StockMinute } from '../types';
+import { MiniChart } from '../components/charts';
+import { useAutoRefresh } from '../hooks/useStockData';
+
+const { Title, Text } = Typography;
+const { TextArea } = Input;
+
+interface StockData {
+  price: StockPrice;
+  minutes?: StockMinute[];
+  fromCache: boolean;
+}
+
+export default function Portfolio() {
+  const navigate = useNavigate();
+  const { 
+    groups, currentGroupId, addGroup, removeGroup, renameGroup, 
+    addStockToGroup, removeStockFromGroup, setCurrentGroup, aStockDate,
+    miniChartWidth, miniChartHeight,
+    getCachedStockData, setCachedStockData, 
+    enableAutoRefresh, refreshInterval
+  } = useStockStore();
+  
+  const [groupName, setGroupName] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [batchStockCodes, setBatchStockCodes] = useState('');
+  const [stockData, setStockData] = useState<Map<string, StockData>>(new Map());
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [columns, setColumns] = useState(2);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const [cacheInfo, setCacheInfo] = useState<{ cached: number; total: number }>({ cached: 0, total: 0 });
+
+  const currentGroup = groups.find(g => g.id === currentGroupId);
+
+  // 从API获取数据
+  const fetchFromApi = useCallback(async (targetMap: Map<string, StockData>): Promise<void> => {
+    if (!currentGroup) return;
+    
+    for (const code of currentGroup.stocks) {
+      try {
+        const res = await stockApi.getStockPrice(code);
+        if (res.code !== 200) continue;
+        
+        let minuteData: StockMinute[] = [];
+        try {
+          const minuteRes = await stockApi.getStockMinutes(code, aStockDate);
+          if (minuteRes.code === 200) {
+            minuteData = minuteRes.data?.minutes || minuteRes.data || [];
+          }
+        } catch (e) {
+          console.error(`股票 ${code} 分时数据加载失败:`, e);
+        }
+        
+        setCachedStockData(code, res.data, minuteData, aStockDate);
+        targetMap.set(code, { price: res.data, minutes: minuteData, fromCache: false });
+      } catch (e) {
+        console.error(`股票 ${code} 数据加载失败:`, e);
+      }
+    }
+  }, [currentGroup, aStockDate, setCachedStockData]);
+
+  // 加载数据
+  const loadGroupStocks = useCallback(async (forceRefresh = false): Promise<void> => {
+    if (!currentGroup || currentGroup.stocks.length === 0) {
+      setStockData(new Map());
+      setCacheInfo({ cached: 0, total: 0 });
+      if (forceRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (forceRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    const data = new Map<string, StockData>();
+    let cachedCount = 0;
+    let needsFetch = false;
+
+    // 首先尝试从缓存获取
+    for (const code of currentGroup.stocks) {
+      const cached = getCachedStockData(code, aStockDate);
+      if (cached) {
+        data.set(code, { price: cached.price, minutes: cached.minutes, fromCache: true });
+        cachedCount++;
+      } else {
+        needsFetch = true;
+      }
+    }
+
+    // 如果有缓存，先显示缓存数据
+    if (data.size > 0) {
+      setStockData(new Map(data));
+      setCacheInfo({ cached: cachedCount, total: currentGroup.stocks.length });
+      
+      // 如果不强制刷新且不是所有数据都缺失，直接返回
+      if (!forceRefresh && cachedCount > 0) {
+        if (forceRefresh) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
+        return;
+      }
+    }
+
+    // 需要从API获取数据的情况
+    if (needsFetch || forceRefresh) {
+      await fetchFromApi(data);
+      
+      // 更新缓存计数
+      cachedCount = 0;
+      for (const code of currentGroup.stocks) {
+        if (getCachedStockData(code, aStockDate)) {
+          cachedCount++;
+        }
+      }
+      
+      setStockData(new Map(data));
+      setCacheInfo({ cached: cachedCount, total: currentGroup.stocks.length });
+    }
+
+    if (forceRefresh) {
+      setRefreshing(false);
+    } else {
+      setLoading(false);
+    }
+  }, [currentGroup, aStockDate, getCachedStockData, fetchFromApi]);
+
+  // 定时刷新
+  const refreshCallback = useCallback(() => {
+    loadGroupStocks(true);
+  }, [loadGroupStocks]);
+
+  useAutoRefresh(refreshCallback, enableAutoRefresh, refreshInterval, [currentGroupId, aStockDate]);
+
+  // 初始化
+  useEffect(() => {
+    if (currentGroup) {
+      loadGroupStocks(false);
+    }
+  }, [currentGroupId]);
+
+  const handleAddGroup = () => {
+    setEditingGroupId(null);
+    setGroupName('');
+    setIsModalOpen(true);
+  };
+
+  const handleEditGroup = (groupId: string) => {
+    const group = groups.find(g => g.id === groupId);
+    if (group) {
+      setEditingGroupId(groupId);
+      setGroupName(group.name);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleSaveGroup = () => {
+    if (!groupName.trim()) return;
+    if (editingGroupId) {
+      renameGroup(editingGroupId, groupName.trim());
+      message.success('分组已更新');
+    } else {
+      addGroup(groupName.trim());
+      message.success('分组已创建');
+    }
+    setIsModalOpen(false);
+  };
+
+  const handleBatchAddStocks = () => {
+    if (!currentGroup) return;
+    setBatchStockCodes('');
+    setIsBatchModalOpen(true);
+  };
+
+  const handleSaveBatchStocks = () => {
+    if (!currentGroup || !batchStockCodes.trim()) return;
+    
+    // 解析输入的股票代码，每行一个
+    const codes = batchStockCodes
+      .split('\n')
+      .map(code => code.trim())
+      .filter(code => code.length > 0);
+    
+    if (codes.length === 0) {
+      message.warning('请输入至少一个股票代码');
+      return;
+    }
+    
+    // 去重
+    const uniqueCodes = Array.from(new Set(codes));
+    
+    // 添加到分组
+    let addedCount = 0;
+    uniqueCodes.forEach(code => {
+      if (!currentGroup.stocks.includes(code)) {
+        addStockToGroup(currentGroup.id, code);
+        addedCount++;
+      }
+    });
+    
+    if (addedCount > 0) {
+      message.success(`成功添加 ${addedCount} 只股票`);
+      // 刷新数据
+      setTimeout(() => loadGroupStocks(false), 100);
+    } else {
+      message.info('这些股票已在分组中');
+    }
+    
+    setIsBatchModalOpen(false);
+    setBatchStockCodes('');
+  };
+
+  const getPriceColor = (percent: number) => percent >= 0 ? 'price-up' : 'price-down';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={2}>自选股管理</Title>
+        <Space>
+          <Badge 
+            status={cacheInfo.cached > 0 ? 'success' : 'default'} 
+            text={
+              <span style={{ color: cacheInfo.cached > 0 ? '#52c41a' : '#999' }}>
+                <ClockCircleOutlined style={{ marginRight: 4 }} />
+                缓存: {cacheInfo.cached}/{cacheInfo.total}
+              </span>
+            } 
+          />
+          {enableAutoRefresh && currentGroup && (
+            <Badge 
+              status="processing" 
+              text={`自动刷新: ${refreshInterval}秒`} 
+            />
+          )}
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={() => loadGroupStocks(true)}
+            loading={refreshing}
+          >
+            刷新数据
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddGroup}>
+            新建分组
+          </Button>
+        </Space>
+      </div>
+
+      <Space wrap style={{ marginBottom: 24 }}>
+        {groups.map(group => (
+          <Card
+            key={group.id}
+            size="small"
+            style={{ cursor: 'pointer', minWidth: 120 }}
+            onClick={() => setCurrentGroup(group.id)}
+            bordered={group.id === currentGroupId}
+          >
+            <Space>
+              <Text strong>{group.name}</Text>
+              <Text type="secondary">({group.stocks.length})</Text>
+              <Button
+                type="text"
+                icon={<EditOutlined />}
+                size="small"
+                onClick={(e) => { e.stopPropagation(); handleEditGroup(group.id); }}
+              />
+              {group.id !== 'default' && (
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  size="small"
+                  onClick={(e) => { e.stopPropagation(); removeGroup(group.id); }}
+                />
+              )}
+            </Space>
+          </Card>
+        ))}
+      </Space>
+
+      {currentGroup && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Space>
+              <Title level={4}>{currentGroup.name}</Title>
+            </Space>
+            <Space>
+              <Button 
+                type="primary" 
+                icon={<InboxOutlined />} 
+                onClick={handleBatchAddStocks}
+              >
+                批量添加
+              </Button>
+              <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
+                <Radio.Button value="list">列表</Radio.Button>
+                <Radio.Button value="grid">网格</Radio.Button>
+              </Radio.Group>
+              {viewMode === 'grid' && (
+                <Select
+                  value={columns}
+                  onChange={setColumns}
+                  options={[
+                    { label: '2列', value: 2 },
+                    { label: '3列', value: 3 },
+                    { label: '4列', value: 4 },
+                  ]}
+                />
+              )}
+            </Space>
+          </div>
+
+          {currentGroup.stocks.length === 0 && (
+            <Alert
+              message="该分组暂无股票"
+              description="去搜索页面添加一些股票吧！"
+              type="info"
+              showIcon
+              action={
+                <Button type="primary" size="small" onClick={() => navigate('/search')}>
+                  去搜索
+                </Button>
+              }
+            />
+          )}
+
+          {viewMode === 'grid' ? (
+            <Row gutter={[16, 16]}>
+              {Array.from(stockData.entries()).map(([code, data]) => {
+                const cached = getCachedStockData(code, aStockDate);
+                const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
+                
+                return (
+                  <Col xs={24} sm={24 / columns} key={code}>
+                    <Card
+                      hoverable
+                      className="stock-card"
+                      onClick={() => navigate(`/stock/${code}`)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Space style={{ flex: 1 }}>
+                          <Text strong style={{ fontSize: 16 }}>{code}</Text>
+                          <div style={{ fontSize: 18, fontWeight: 'bold' }} className={getPriceColor(data.price.change_percent)}>
+                            {data.price.current_price.toFixed(2)}
+                          </div>
+                          <div style={{ fontSize: 16 }} className={getPriceColor(data.price.change_percent)}>
+                            {data.price.change_percent >= 0 ? '+' : ''}{data.price.change_percent.toFixed(2)}%
+                          </div>
+                          {data.fromCache && (
+                            <Badge status="success" text="缓存" title={cacheTime} />
+                          )}
+                        </Space>
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => { e.stopPropagation(); removeStockFromGroup(currentGroup.id, code); }}
+                        />
+                      </div>
+                      <MiniChart data={data.minutes || []} width={miniChartWidth} height={miniChartHeight} />
+                    </Card>
+                  </Col>
+                );
+              })}
+            </Row>
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {Array.from(stockData.entries()).map(([code, data]) => {
+                const cached = getCachedStockData(code, aStockDate);
+                const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
+                
+                return (
+                  <Card key={code} hoverable onClick={() => navigate(`/stock/${code}`)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Space style={{ flex: 1 }}>
+                        <Text strong style={{ fontSize: 18 }}>{code}</Text>
+                        <div style={{ fontSize: 20, fontWeight: 'bold' }} className={getPriceColor(data.price.change_percent)}>
+                          {data.price.current_price.toFixed(2)}
+                        </div>
+                        <div className={getPriceColor(data.price.change_percent)} style={{ fontSize: 18, fontWeight: 'bold' }}>
+                          {data.price.change_percent >= 0 ? '+' : ''}{data.price.change_percent.toFixed(2)}%
+                        </div>
+                        {data.fromCache && (
+                          <Badge status="success" text="缓存" title={cacheTime} />
+                        )}
+                      </Space>
+                      <Space>
+                        <Button icon={<EyeOutlined />} onClick={() => navigate(`/stock/${code}`)}>
+                          详情
+                        </Button>
+                        <Button
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => { e.stopPropagation(); removeStockFromGroup(currentGroup.id, code); }}
+                        >
+                          移除
+                        </Button>
+                      </Space>
+                    </div>
+                  </Card>
+                );
+              })}
+            </Space>
+          )}
+
+          {stockData.size === 0 && !loading && currentGroup.stocks.length > 0 && (
+            <Alert
+              message="正在加载数据..."
+              description="点击刷新按钮手动更新，或确保API服务正在运行"
+              type="info"
+              showIcon
+            />
+          )}
+        </>
+      )}
+
+      <Modal
+        title={editingGroupId ? '编辑分组' : '新建分组'}
+        open={isModalOpen}
+        onOk={handleSaveGroup}
+        onCancel={() => setIsModalOpen(false)}
+      >
+        <Input
+          placeholder="请输入分组名称"
+          value={groupName}
+          onChange={(e) => setGroupName(e.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        title="批量添加股票"
+        open={isBatchModalOpen}
+        onOk={handleSaveBatchStocks}
+        onCancel={() => { setIsBatchModalOpen(false); setBatchStockCodes(''); }}
+        okText="添加"
+        width={500}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">请输入股票代码，每行一个：</Text>
+        </div>
+        <TextArea
+          placeholder="例如：&#10;000400&#10;000404&#10;600000"
+          value={batchStockCodes}
+          onChange={(e) => setBatchStockCodes(e.target.value)}
+          rows={8}
+          showCount
+        />
+      </Modal>
+    </div>
+  );
+}

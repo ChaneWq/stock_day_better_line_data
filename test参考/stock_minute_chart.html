@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股分时图</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #1a1a1a;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #0f0f0f;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #1e1e1e;
+            padding: 15px 20px;
+            border-bottom: 1px solid #333;
+        }
+
+        .stock-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .stock-name {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .stock-code {
+            font-size: 16px;
+            color: #888;
+        }
+
+        .current-price-panel {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .current-price {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .change-info {
+            font-size: 18px;
+        }
+
+        .price-up {
+            color: #f14b4b;
+        }
+
+        .price-down {
+            color: #3eba4f;
+        }
+
+        .price-flat {
+            color: #fff;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .chart-container {
+            flex: 1;
+            background: #0f0f0f;
+        }
+
+        .chart-wrapper {
+            width: 100%;
+            height: 500px;
+        }
+
+        .order-book {
+            width: 280px;
+            background: #1e1e1e;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .order-book-title {
+            font-size: 16px;
+            color: #fff;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .control-panel {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px 20px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #333;
+        }
+
+        .control-label {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .control-input {
+            padding: 8px 12px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+            width: 120px;
+        }
+
+        .control-input:focus {
+            outline: none;
+            border-color: #666;
+        }
+
+        .btn-query {
+            padding: 8px 20px;
+            background: #f14b4b;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-query:hover {
+            background: #ff5c5c;
+        }
+
+        .stock-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="stock-header">
+                <div class="stock-info">
+                    <div>
+                        <div class="stock-name" id="stockName">分时图</div>
+                        <div class="stock-code" id="stockCodeDisplay">000400</div>
+                    </div>
+                    <div class="current-price-panel">
+                        <div class="current-price" id="currentPrice">3245.67</div>
+                        <div class="change-info" id="changeInfo">
+                            <span id="changeAmount">+23.45</span>
+                            <span id="changePercent">(+0.73%)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <span class="control-label">股票代码：</span>
+            <input type="text" class="control-input" id="stockCodeInput" value="000400" placeholder="如:000001">
+            <span class="control-label">日期：</span>
+            <input type="date" class="control-input" id="dateInput">
+            <button class="btn-query" id="queryBtn">查询</button>
+        </div>
+
+        <div class="main-content">
+            <div class="chart-container">
+                <div class="chart-wrapper" id="chart"></div>
+            </div>
+
+            <div class="order-book">
+                <div class="order-book-title">盘口信息</div>
+                <div class="stat-row">
+                    <span class="stat-label">今开</span>
+                    <span class="stat-value" id="openPrice">3220.12</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">昨收</span>
+                    <span class="stat-value" id="preClose">3222.22</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">最高</span>
+                    <span class="stat-value price-up" id="highPrice">3258.90</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">最低</span>
+                    <span class="stat-value price-down" id="lowPrice">3215.50</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">成交量</span>
+                    <span class="stat-value" id="volume">2.35亿</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">成交额</span>
+                    <span class="stat-value" id="amount">3568亿</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let currentStockCode = '000400';
+        let currentTradeDate = '20260508';
+        let chart = null;
+
+        function getPriceClass(price, base) {
+            if (price > base) return 'price-up';
+            if (price < base) return 'price-down';
+            return 'price-flat';
+        }
+
+        function formatNumber(num, unit = '') {
+            if (num >= 100000000) return (num / 100000000).toFixed(2) + '亿' + unit;
+            if (num >= 10000) return (num / 10000).toFixed(2) + '万' + unit;
+            return num.toFixed(2) + unit;
+        }
+
+        function formatDateToYYYYMMDD(dateStr) {
+            return dateStr.replace(/-/g, '');
+        }
+
+        function updateUI(priceInfo, minuteData) {
+            const { current_price, pre_close, open, high, low, volume, amount } = priceInfo;
+            const changeAmount = current_price - pre_close;
+            const changePercent = (changeAmount / pre_close * 100).toFixed(2);
+            const priceClass = getPriceClass(current_price, pre_close);
+
+            document.getElementById('stockCodeDisplay').textContent = currentStockCode;
+
+            document.getElementById('currentPrice').textContent = current_price.toFixed(2);
+            document.getElementById('currentPrice').className = `current-price ${priceClass}`;
+
+            document.getElementById('changeAmount').textContent = (changeAmount >= 0 ? '+' : '') + changeAmount.toFixed(2);
+            document.getElementById('changeAmount').className = priceClass;
+            document.getElementById('changePercent').textContent = `(${changeAmount >= 0 ? '+' : ''}${changePercent}%)`;
+            document.getElementById('changePercent').className = priceClass;
+            document.getElementById('changeInfo').className = `change-info ${priceClass}`;
+
+            document.getElementById('openPrice').textContent = open.toFixed(2);
+            document.getElementById('openPrice').className = `stat-value ${getPriceClass(open, pre_close)}`;
+
+            document.getElementById('preClose').textContent = pre_close.toFixed(2);
+
+            document.getElementById('highPrice').textContent = high.toFixed(2);
+            document.getElementById('highPrice').className = `stat-value price-up`;
+
+            document.getElementById('lowPrice').textContent = low.toFixed(2);
+            document.getElementById('lowPrice').className = `stat-value price-down`;
+
+            document.getElementById('volume').textContent = formatNumber(volume);
+            document.getElementById('amount').textContent = formatNumber(amount, '元');
+        }
+
+        function initChart(minuteData, priceInfo) {
+            const chartDom = document.getElementById('chart');
+            
+            if (chart) {
+                chart.dispose();
+            }
+            
+            chart = echarts.init(chartDom);
+
+            const timeLabels = minuteData.map(item => 
+                `${item.hour.toString().padStart(2, '0')}:${item.minute.toString().padStart(2, '0')}`
+            );
+            const priceData = minuteData.map(item => item.price);
+            const avgPriceData = minuteData.map(item => item.avg_price);
+            const volumeData = minuteData.map(item => item.vol);
+
+            const preClosePrice = priceInfo.pre_close;
+            const currentPrice = priceData[priceData.length - 1];
+            const highPrice = Math.max(...priceData);
+            const lowPrice = Math.min(...priceData);
+            const priceRange = highPrice - lowPrice;
+            const yAxisMin = lowPrice - priceRange * 0.1;
+            const yAxisMax = highPrice + priceRange * 0.1;
+
+            const upColor = '#f14b4b';
+            const downColor = '#3eba4f';
+
+            const option = {
+                backgroundColor: '#0f0f0f',
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross',
+                        crossStyle: {
+                            color: '#666'
+                        }
+                    },
+                    backgroundColor: 'rgba(20, 20, 20, 0.95)',
+                    borderColor: '#444',
+                    textStyle: {
+                        color: '#fff'
+                    }
+                },
+                grid: [
+                    {
+                        left: '10%',
+                        right: '8%',
+                        top: '8%',
+                        height: '55%'
+                    },
+                    {
+                        left: '10%',
+                        right: '8%',
+                        top: '70%',
+                        height: '18%'
+                    }
+                ],
+                xAxis: [
+                    {
+                        type: 'category',
+                        data: timeLabels,
+                        boundaryGap: false,
+                        axisLine: { lineStyle: { color: '#333' } },
+                        axisLabel: {
+                            color: '#888',
+                            fontSize: 10,
+                            interval: Math.floor(timeLabels.length / 8)
+                        },
+                        splitLine: { show: false },
+                        axisTick: { show: false }
+                    },
+                    {
+                        type: 'category',
+                        gridIndex: 1,
+                        data: timeLabels,
+                        boundaryGap: false,
+                        axisLine: { lineStyle: { color: '#333' } },
+                        axisLabel: { show: false },
+                        splitLine: { show: false },
+                        axisTick: { show: false }
+                    }
+                ],
+                yAxis: [
+                    {
+                        type: 'value',
+                        min: yAxisMin,
+                        max: yAxisMax,
+                        axisLine: { show: false },
+                        axisLabel: {
+                            color: '#888',
+                            fontSize: 10,
+                            formatter: function(value) {
+                                return value.toFixed(2);
+                            }
+                        },
+                        splitLine: {
+                            lineStyle: {
+                                color: '#2a2a2a',
+                                type: 'solid'
+                            }
+                        }
+                    },
+                    {
+                        type: 'value',
+                        gridIndex: 1,
+                        axisLine: { show: false },
+                        axisLabel: {
+                            color: '#888',
+                            fontSize: 10,
+                            formatter: function(value) {
+                                return (value / 10000).toFixed(0) + '万';
+                            }
+                        },
+                        splitLine: {
+                            lineStyle: {
+                                color: '#2a2a2a',
+                                type: 'solid'
+                            }
+                        }
+                    }
+                ],
+                series: [
+                    {
+                        name: '现价',
+                        type: 'line',
+                        data: priceData,
+                        smooth: true,
+                        symbol: 'none',
+                        lineStyle: {
+                            width: 2,
+                            color: currentPrice >= preClosePrice ? upColor : downColor
+                        },
+                        itemStyle: {
+                            color: currentPrice >= preClosePrice ? upColor : downColor
+                        },
+                        markLine: {
+                            silent: true,
+                            data: [
+                                {
+                                    yAxis: preClosePrice,
+                                    lineStyle: {
+                                        color: '#ffff00',
+                                        type: 'dashed',
+                                        width: 1
+                                    },
+                                    label: {
+                                        show: false
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        name: '均价',
+                        type: 'line',
+                        data: avgPriceData,
+                        smooth: true,
+                        symbol: 'none',
+                        lineStyle: {
+                            width: 1.5,
+                            color: '#ffaa00'
+                        },
+                        itemStyle: {
+                            color: '#ffaa00'
+                        }
+                    },
+                    {
+                        name: '成交量',
+                        type: 'bar',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: volumeData.map((vol, index) => {
+                            const color = index === 0 
+                                ? (priceData[index] >= preClosePrice ? upColor : downColor)
+                                : (priceData[index] >= priceData[index - 1] ? upColor : downColor);
+                            return {
+                                value: vol,
+                                itemStyle: { color: color }
+                            };
+                        }),
+                        barWidth: '60%'
+                    }
+                ]
+            };
+
+            chart.setOption(option);
+
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+
+        async function loadData() {
+            try {
+                const [minuteResponse, priceResponse] = await Promise.all([
+                    fetch(`${API_BASE}/stock/minutes?code=${currentStockCode}&date=${currentTradeDate}`),
+                    fetch(`${API_BASE}/stock/price/current?code=${currentStockCode}`)
+                ]);
+
+                const minuteResult = await minuteResponse.json();
+                const priceResult = await priceResponse.json();
+
+                if (minuteResult.code === 200 && priceResult.code === 200) {
+                    updateUI(priceResult.data, minuteResult.data);
+                    initChart(minuteResult.data, priceResult.data);
+                } else {
+                    console.error('API Error:', minuteResult, priceResult);
+                }
+            } catch (error) {
+                console.error('Failed to load data:', error);
+            }
+        }
+
+        function initControls() {
+            const dateStr = '2026-05-08';
+            
+            document.getElementById('dateInput').value = dateStr;
+            currentTradeDate = formatDateToYYYYMMDD(dateStr);
+
+            document.getElementById('queryBtn').addEventListener('click', function() {
+                const stockCode = document.getElementById('stockCodeInput').value.trim();
+                const dateInput = document.getElementById('dateInput').value;
+
+                if (!stockCode) {
+                    alert('请输入股票代码');
+                    return;
+                }
+
+                if (!dateInput) {
+                    alert('请选择日期');
+                    return;
+                }
+
+                currentStockCode = stockCode;
+                currentTradeDate = formatDateToYYYYMMDD(dateInput);
+                loadData();
+            });
+
+            document.getElementById('stockCodeInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    document.getElementById('queryBtn').click();
+                }
+            });
+        }
+
+        initControls();
+        loadData();
+    </script>
+</body>
+</html>
