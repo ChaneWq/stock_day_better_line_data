@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert, Upload, Divider } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined, ExportOutlined, ImportOutlined, CopyOutlined, SnippetsOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { stockApi } from '../services/api';
 import { useStockStore, ImportGroupsData } from '../store';
@@ -45,6 +45,7 @@ export default function Portfolio() {
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [importPreview, setImportPreview] = useState<ImportGroupsData | null>(null);
   const [importFileName, setImportFileName] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentGroup = groups.find(g => g.id === currentGroupId);
@@ -342,6 +343,63 @@ export default function Portfolio() {
     }
   }, [stockData, sortBy]);
 
+  const groupStats = useMemo(() => {
+    const entries = Array.from(stockData.entries());
+    if (entries.length === 0) return null;
+
+    const total = entries.length;
+    let upCount = 0, downCount = 0, flatCount = 0;
+    let totalChange = 0;
+    let totalStrength = 0;
+    let strongestCode = '', strongestChange = -Infinity;
+    let weakestCode = '', weakestChange = Infinity;
+    let strongCount = 0;
+
+    const changeRanges = {
+      limitUp: 0,
+      above5: 0,
+      zeroTo5: 0,
+      neg5To0: 0,
+      belowNeg5: 0,
+      limitDown: 0,
+    };
+
+    for (const [code, data] of entries) {
+      const change = data.price.change_percent;
+      totalChange += change;
+
+      if (change > 0) upCount++;
+      else if (change < 0) downCount++;
+      else flatCount++;
+
+      if (change > strongestChange) { strongestChange = change; strongestCode = code; }
+      if (change < weakestChange) { weakestChange = change; weakestCode = code; }
+
+      const strength = calculateStrengthPercent(data.minutes || []);
+      totalStrength += strength;
+      if (strength >= 60) strongCount++;
+
+      if (change >= 9.9) changeRanges.limitUp++;
+      else if (change >= 5) changeRanges.above5++;
+      else if (change > 0) changeRanges.zeroTo5++;
+      else if (change === 0) changeRanges.neg5To0++;
+      else if (change > -5) changeRanges.neg5To0++;
+      else if (change > -9.9) changeRanges.belowNeg5++;
+      else changeRanges.limitDown++;
+    }
+
+    return {
+      total,
+      avgChange: totalChange / total,
+      upCount, downCount, flatCount,
+      strongestCode, strongestChange,
+      weakestCode, weakestChange,
+      avgStrength: totalStrength / total,
+      strongCount, strongRatio: strongCount / total * 100,
+      changeRanges,
+    };
+  }, [stockData]);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -445,6 +503,13 @@ export default function Portfolio() {
               >
                 批量添加
               </Button>
+              <Button 
+                icon={<SnippetsOutlined />} 
+                onClick={() => setIsExportModalOpen(true)}
+                disabled={!currentGroup || currentGroup.stocks.length === 0}
+              >
+                批量导出
+              </Button>
               <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
                 <Radio.Button value="list">列表</Radio.Button>
                 <Radio.Button value="grid">网格</Radio.Button>
@@ -475,6 +540,92 @@ export default function Portfolio() {
                 </Button>
               }
             />
+          )}
+
+          {groupStats && (
+            <Card size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
+              <Row gutter={[16, 12]}>
+                <Col xs={12} sm={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>平均涨幅</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: groupStats.avgChange >= 0 ? '#cf1322' : '#3f8600' }}>
+                      {groupStats.avgChange >= 0 ? '+' : ''}{groupStats.avgChange.toFixed(2)}%
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} sm={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>涨跌分布</div>
+                    <div style={{ fontSize: 16, fontWeight: 600 }}>
+                      <span style={{ color: '#cf1322' }}>{groupStats.upCount}涨</span>
+                      <span style={{ margin: '0 6px', color: '#999' }}>/</span>
+                      <span style={{ color: '#3f8600' }}>{groupStats.downCount}跌</span>
+                      <span style={{ margin: '0 6px', color: '#999' }}>/</span>
+                      <span style={{ color: '#999' }}>{groupStats.flatCount}平</span>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} sm={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>平均强势</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: getStrengthColor(groupStats.avgStrength) }}>
+                      {groupStats.avgStrength.toFixed(0)}%
+                    </div>
+                    <div style={{ width: '100%', height: 4, background: '#f0f0f0', borderRadius: 2, marginTop: 4 }}>
+                      <div style={{ width: `${groupStats.avgStrength}%`, height: '100%', background: getStrengthColor(groupStats.avgStrength), borderRadius: 2 }} />
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={12} sm={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>强势占比</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#1890ff' }}>
+                      {groupStats.strongRatio.toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {groupStats.strongCount}/{groupStats.total}只 ≥60%
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0', fontSize: 13 }}>
+                <span>
+                  最强：<span style={{ fontWeight: 600, color: '#cf1322' }}>{groupStats.strongestCode}</span>
+                  <span style={{ color: '#cf1322', marginLeft: 4 }}>+{groupStats.strongestChange.toFixed(2)}%</span>
+                </span>
+                <span style={{ margin: '0 16px', color: '#d9d9d9' }}>|</span>
+                <span>
+                  最弱：<span style={{ fontWeight: 600, color: '#3f8600' }}>{groupStats.weakestCode}</span>
+                  <span style={{ color: '#3f8600', marginLeft: 4 }}>{groupStats.weakestChange.toFixed(2)}%</span>
+                </span>
+              </div>
+              {(() => {
+                const r = groupStats.changeRanges;
+                const maxCount = Math.max(r.limitUp, r.above5, r.zeroTo5, r.neg5To0, r.belowNeg5, r.limitDown, 1);
+                const bars = [
+                  { label: '涨停', count: r.limitUp, color: '#cf1322' },
+                  { label: '>5%', count: r.above5, color: '#ff7875' },
+                  { label: '0~5%', count: r.zeroTo5, color: '#ffa39e' },
+                  { label: '-5~0%', count: r.neg5To0, color: '#95de64' },
+                  { label: '<-5%', count: r.belowNeg5, color: '#52c41a' },
+                  { label: '跌停', count: r.limitDown, color: '#3f8600' },
+                ];
+                return (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+                    <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>涨跌分布</div>
+                    {bars.map(bar => bar.count > 0 && (
+                      <div key={bar.label} style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ width: 48, fontSize: 12, color: '#666', textAlign: 'right', marginRight: 8 }}>{bar.label}</span>
+                        <div style={{ flex: 1, height: 14, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${bar.count / maxCount * 100}%`, height: '100%', background: bar.color, borderRadius: 3, transition: 'width 0.3s ease' }} />
+                        </div>
+                        <span style={{ width: 36, fontSize: 12, color: '#666', marginLeft: 8 }}>{bar.count}只</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </Card>
           )}
 
           {viewMode === 'grid' ? (
@@ -629,6 +780,52 @@ export default function Portfolio() {
           rows={8}
           showCount
         />
+      </Modal>
+
+      <Modal
+        title="批量导出股票"
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setIsExportModalOpen(false)}>
+            关闭
+          </Button>,
+          <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={() => {
+            const text = currentGroup?.stocks.join('\n') || '';
+            navigator.clipboard.writeText(text).then(() => {
+              message.success('已复制到剪贴板');
+            }).catch(() => {
+              const textarea = document.createElement('textarea');
+              textarea.value = text;
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              document.body.removeChild(textarea);
+              message.success('已复制到剪贴板');
+            });
+          }}>
+            复制
+          </Button>,
+        ]}
+        width={500}
+      >
+        {currentGroup && (
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <Space>
+                <Text type="secondary">分组：</Text>
+                <Text strong>{currentGroup.name}</Text>
+                <Text type="secondary">（{currentGroup.stocks.length}只）</Text>
+              </Space>
+            </div>
+            <TextArea
+              value={currentGroup.stocks.join('\n')}
+              readOnly
+              rows={10}
+              style={{ fontFamily: 'monospace', fontSize: 14 }}
+            />
+          </>
+        )}
       </Modal>
 
       <Modal
