@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert, Upload, Divider, Switch } from 'antd';
+import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert, Upload, Divider, Switch, InputNumber } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined, ExportOutlined, ImportOutlined, CopyOutlined, SnippetsOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { stockApi } from '../services/api';
@@ -47,6 +47,8 @@ export default function Portfolio() {
   const [importPreview, setImportPreview] = useState<ImportGroupsData | null>(null);
   const [importFileName, setImportFileName] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [filterMinChange, setFilterMinChange] = useState<number | null>(null);
+  const [filterMaxChange, setFilterMaxChange] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentGroup = groups.find(g => g.id === currentGroupId);
@@ -344,6 +346,16 @@ export default function Portfolio() {
     }
   }, [stockData, sortBy]);
 
+  const filteredStockEntries = useMemo(() => {
+    if (filterMinChange === null && filterMaxChange === null) return sortedStockEntries;
+    return sortedStockEntries.filter(([, data]) => {
+      const change = data.price.change_percent;
+      if (filterMinChange !== null && change < filterMinChange) return false;
+      if (filterMaxChange !== null && change > filterMaxChange) return false;
+      return true;
+    });
+  }, [sortedStockEntries, filterMinChange, filterMaxChange]);
+
   const groupStats = useMemo(() => {
     const entries = Array.from(stockData.entries());
     if (entries.length === 0) return null;
@@ -515,6 +527,25 @@ export default function Portfolio() {
                 <Text style={{ fontSize: 13 }}>名称</Text>
                 <Switch size="small" checked={showStockName} onChange={toggleShowStockName} />
               </Space>
+              <Space size={4}>
+                <Text style={{ fontSize: 13 }}>涨幅</Text>
+                <InputNumber
+                  size="small"
+                  style={{ width: 60 }}
+                  placeholder="最小"
+                  value={filterMinChange}
+                  onChange={(v) => setFilterMinChange(v)}
+                />
+                <Text style={{ fontSize: 12 }}>~</Text>
+                <InputNumber
+                  size="small"
+                  style={{ width: 60 }}
+                  placeholder="最大"
+                  value={filterMaxChange}
+                  onChange={(v) => setFilterMaxChange(v)}
+                />
+                <Text style={{ fontSize: 12 }}>%</Text>
+              </Space>
               <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
                 <Radio.Button value="list">列表</Radio.Button>
                 <Radio.Button value="grid">网格</Radio.Button>
@@ -524,6 +555,7 @@ export default function Portfolio() {
                   value={columns}
                   onChange={setColumns}
                   options={[
+                    { label: '1列', value: 1 },
                     { label: '2列', value: 2 },
                     { label: '3列', value: 3 },
                     { label: '4列', value: 4 },
@@ -635,7 +667,7 @@ export default function Portfolio() {
 
           {viewMode === 'grid' ? (
             <Row gutter={[16, 16]}>
-              {sortedStockEntries.map(([code, data]) => {
+              {filteredStockEntries.map(([code, data]) => {
                 const cached = getCachedStockData(code, aStockDate);
                 const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
                 const strengthPercent = calculateStrengthPercent(data.minutes || []);
@@ -696,7 +728,7 @@ export default function Portfolio() {
             </Row>
           ) : (
             <Space direction="vertical" style={{ width: '100%' }}>
-              {sortedStockEntries.map(([code, data]) => {
+              {filteredStockEntries.map(([code, data]) => {
                 const cached = getCachedStockData(code, aStockDate);
                 const cacheTime = cached ? new Date(cached.timestamp).toLocaleString() : '';
                 const strengthPercent = calculateStrengthPercent(data.minutes || []);
