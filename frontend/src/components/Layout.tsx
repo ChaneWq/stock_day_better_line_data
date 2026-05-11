@@ -6,7 +6,8 @@ import {
   StarOutlined, 
   BarChartOutlined, 
   SettingOutlined,
-  RiseOutlined
+  RiseOutlined,
+  FundOutlined
 } from '@ant-design/icons';
 
 const { Header, Sider, Content } = AntLayout;
@@ -14,7 +15,15 @@ const { Header, Sider, Content } = AntLayout;
 const menuItems = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
   { key: '/search', icon: <SearchOutlined />, label: '股票搜索' },
-  { key: '/portfolio', icon: <StarOutlined />, label: '自选股' },
+  {
+    key: 'portfolio',
+    icon: <StarOutlined />,
+    label: '自选股',
+    children: [
+      { key: '/portfolio', label: '自选股管理' },
+      { key: '/portfolio/visualization', label: '分组可视化' },
+    ],
+  },
   {
     key: 'analysis',
     icon: <BarChartOutlined />,
@@ -40,12 +49,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (path.startsWith('/analysis')) {
       return ['analysis'];
     }
+    if (path.startsWith('/portfolio')) {
+      return [path];
+    }
     return [path];
   };
 
   const getOpenKeys = () => {
-    if (location.pathname.startsWith('/analysis')) {
+    const path = location.pathname;
+    if (path.startsWith('/analysis')) {
       return ['analysis'];
+    }
+    if (path.startsWith('/portfolio')) {
+      return ['portfolio'];
     }
     return [];
   };

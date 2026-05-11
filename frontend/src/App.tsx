@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Search from './pages/Search';
 import Portfolio from './pages/Portfolio';
+import PortfolioVisualization from './pages/PortfolioVisualization';
 import StockDetail from './pages/StockDetail';
 import KDJ from './pages/KDJ';
 import MACD from './pages/MACD';
@@ -28,6 +29,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/search" element={<Search />} />
             <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/portfolio/visualization" element={<PortfolioVisualization />} />
             <Route path="/stock/:code" element={<StockDetail />} />
             <Route path="/analysis/kdj" element={<KDJ />} />
             <Route path="/analysis/macd" element={<MACD />} />
