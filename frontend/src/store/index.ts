@@ -20,6 +20,18 @@ interface CachedSearchData {
 // 缓存策略类型
 type CacheStrategy = 'cache-only' | 'cache-first' | 'network-first';
 
+export interface ImportGroupItem {
+  name: string;
+  stocks: string[];
+}
+
+export interface ImportGroupsData {
+  version: string;
+  exportTime: string;
+  platform: string;
+  groups: ImportGroupItem[];
+}
+
 interface StockStore {
   // 基础配置
   groups: StockGroup[];
@@ -70,6 +82,7 @@ interface StockStore {
   getCachedSearchData: (keyword: string) => StockInfo[] | null;
   clearCache: () => void;
   clearExpiredCache: () => void;
+  importGroups: (importData: ImportGroupsData, mode: 'merge' | 'replace') => { addedGroups: number; mergedGroups: number; addedStocks: number };
 }
 
 export const useStockStore = create<StockStore>()(
@@ -219,6 +232,54 @@ export const useStockStore = create<StockStore>()(
           cachedStockData: filteredStockData,
           cachedSearchData: filteredSearchData
         });
+      },
+      
+      importGroups: (importData: ImportGroupsData, mode: 'merge' | 'replace') => {
+        const state = get();
+        let addedGroups = 0;
+        let mergedGroups = 0;
+        let addedStocks = 0;
+        
+        if (mode === 'replace') {
+          const newGroups: StockGroup[] = importData.groups.map((g, index) => ({
+            id: `imported_${Date.now()}_${index}`,
+            name: g.name,
+            stocks: [...new Set(g.stocks)]
+          }));
+          set({
+            groups: newGroups,
+            currentGroupId: newGroups.length > 0 ? newGroups[0].id : null
+          });
+          addedGroups = newGroups.length;
+          return { addedGroups, mergedGroups: 0, addedStocks: 0 };
+        }
+        
+        const existingGroups = [...state.groups];
+        
+        for (const importGroup of importData.groups) {
+          if (!importGroup.name || !importGroup.name.trim()) continue;
+          
+          const existingGroup = existingGroups.find(g => g.name === importGroup.name);
+          
+          if (existingGroup) {
+            const newStocks = importGroup.stocks.filter(s => !existingGroup.stocks.includes(s));
+            existingGroup.stocks = [...existingGroup.stocks, ...newStocks];
+            mergedGroups++;
+            addedStocks += newStocks.length;
+          } else {
+            const newGroup: StockGroup = {
+              id: `imported_${Date.now()}_${addedGroups}`,
+              name: importGroup.name.trim(),
+              stocks: [...new Set(importGroup.stocks)]
+            };
+            existingGroups.push(newGroup);
+            addedGroups++;
+            addedStocks += newGroup.stocks.length;
+          }
+        }
+        
+        set({ groups: existingGroups });
+        return { addedGroups, mergedGroups, addedStocks };
       },
     }),
     {
