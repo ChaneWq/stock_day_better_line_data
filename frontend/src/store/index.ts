@@ -67,6 +67,7 @@ interface StockStore {
   removeStockFromGroup: (groupId: string, stockCode: string) => void;
   setCurrentGroup: (groupId: string | null) => void;
   addSearchHistory: (stockCode: string) => void;
+  clearSearchHistory: () => void;
   setAStockDate: (date: string) => void;
   setMiniChartWidth: (width: number) => void;
   setMiniChartHeight: (height: number) => void;
@@ -160,6 +161,8 @@ export const useStockStore = create<StockStore>()(
       addSearchHistory: (stockCode: string) => set((state) => ({
         searchHistory: [stockCode, ...state.searchHistory.filter(s => s !== stockCode)].slice(0, 10)
       })),
+      
+      clearSearchHistory: () => set({ searchHistory: [] }),
       
       setAStockDate: (date: string) => set({ aStockDate: date }),
       
