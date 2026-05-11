@@ -14,7 +14,7 @@ export default function StockDetail() {
   const { code } = useParams<{ code: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { groups, addStockToGroup, aStockDate } = useStockStore();
+  const { groups, addStockToGroup, aStockDate, stockNames } = useStockStore();
   const { price, minutes, loading, fromCache, refresh, cacheTimestamp } = useStockData(code || '', aStockDate);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function StockDetail() {
           <Title level={4}>股票详情</Title>
           {price && (
             <div>
-              <Text>代码: {price.code}</Text>
+              <Text>代码: {price.code}{stockNames[price.code] ? ` (${stockNames[price.code]})` : ''}</Text>
               <br />
               <div style={{ fontSize: 32, fontWeight: 'bold', marginTop: 16 }} className={getPriceColor(price.change_percent)}>
                 {price.current_price.toFixed(2)}
@@ -150,7 +150,12 @@ export default function StockDetail() {
         <>
           <Card style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-              <Title level={3} style={{ margin: 0 }}>{code}</Title>
+              <Title level={3} style={{ margin: 0 }}>
+                {code}
+                {stockNames[code || ''] && (
+                  <Text type="secondary" style={{ fontSize: 18, fontWeight: 400, marginLeft: 8 }}>{stockNames[code || '']}</Text>
+                )}
+              </Title>
               <div style={{ fontSize: 32, fontWeight: 'bold' }} className={getPriceColor(price.change_percent)}>
                 {price.current_price.toFixed(2)}
               </div>

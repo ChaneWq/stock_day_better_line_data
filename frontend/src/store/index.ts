@@ -42,6 +42,10 @@ interface StockStore {
   // UI配置
   miniChartWidth: number;
   miniChartHeight: number;
+  showStockName: boolean;
+  
+  // 个股名称
+  stockNames: Record<string, string>;
   
   // 缓存策略配置
   cacheStrategy: CacheStrategy;
@@ -66,6 +70,11 @@ interface StockStore {
   setAStockDate: (date: string) => void;
   setMiniChartWidth: (width: number) => void;
   setMiniChartHeight: (height: number) => void;
+  toggleShowStockName: () => void;
+  
+  // 个股名称方法
+  importStockNames: (names: Record<string, string>) => number;
+  clearStockNames: () => void;
   
   // 缓存策略方法
   setCacheStrategy: (strategy: CacheStrategy) => void;
@@ -99,6 +108,10 @@ export const useStockStore = create<StockStore>()(
       // UI配置
       miniChartWidth: 200,
       miniChartHeight: 80,
+      showStockName: true,
+      
+      // 个股名称
+      stockNames: {},
       
       // 缓存策略配置
       cacheStrategy: 'cache-first',
@@ -152,6 +165,17 @@ export const useStockStore = create<StockStore>()(
       
       setMiniChartWidth: (width: number) => set({ miniChartWidth: width }),
       setMiniChartHeight: (height: number) => set({ miniChartHeight: height }),
+      
+      toggleShowStockName: () => set((state) => ({ showStockName: !state.showStockName })),
+      
+      importStockNames: (names: Record<string, string>) => {
+        const state = get();
+        const merged = { ...state.stockNames, ...names };
+        set({ stockNames: merged });
+        return Object.keys(names).length;
+      },
+      
+      clearStockNames: () => set({ stockNames: {} }),
       
       // 缓存策略方法
       setCacheStrategy: (strategy: CacheStrategy) => set({ cacheStrategy: strategy }),
@@ -292,6 +316,8 @@ export const useStockStore = create<StockStore>()(
         aStockDate: state.aStockDate,
         miniChartWidth: state.miniChartWidth,
         miniChartHeight: state.miniChartHeight,
+        showStockName: state.showStockName,
+        stockNames: state.stockNames,
         cacheStrategy: state.cacheStrategy,
         enablePersistentCache: state.enablePersistentCache,
         enableAutoRefresh: state.enableAutoRefresh,

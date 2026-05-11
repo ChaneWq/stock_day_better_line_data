@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert, Upload, Divider } from 'antd';
+import { Card, Typography, Button, Input, Modal, Space, Select, message, Row, Col, Radio, Badge, Alert, Upload, Divider, Switch } from 'antd';
 import { PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ReloadOutlined, ClockCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined, ExportOutlined, ImportOutlined, CopyOutlined, SnippetsOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { stockApi } from '../services/api';
@@ -26,7 +26,8 @@ export default function Portfolio() {
     miniChartWidth, miniChartHeight,
     getCachedStockData, setCachedStockData, 
     enableAutoRefresh, refreshInterval,
-    importGroups
+    importGroups,
+    stockNames, showStockName, toggleShowStockName
   } = useStockStore();
   
   const [groupName, setGroupName] = useState('');
@@ -510,6 +511,10 @@ export default function Portfolio() {
               >
                 批量导出
               </Button>
+              <Space size={4}>
+                <Text style={{ fontSize: 13 }}>名称</Text>
+                <Switch size="small" checked={showStockName} onChange={toggleShowStockName} />
+              </Space>
               <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
                 <Radio.Button value="list">列表</Radio.Button>
                 <Radio.Button value="grid">网格</Radio.Button>
@@ -645,7 +650,12 @@ export default function Portfolio() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Space style={{ flex: 1 }}>
-                          <Text strong style={{ fontSize: 16 }}>{code}</Text>
+                          <div>
+                            <Text strong style={{ fontSize: 16 }}>{code}</Text>
+                            {showStockName && stockNames[code] && (
+                              <Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>{stockNames[code]}</Text>
+                            )}
+                          </div>
                           <div style={{ fontSize: 18, fontWeight: 'bold' }} className={getPriceColor(data.price.change_percent)}>
                             {data.price.current_price.toFixed(2)}
                           </div>
@@ -696,7 +706,12 @@ export default function Portfolio() {
                   <Card key={code} hoverable onClick={() => navigate(`/stock/${code}`)}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Space style={{ flex: 1 }}>
-                        <Text strong style={{ fontSize: 18 }}>{code}</Text>
+                        <div>
+                          <Text strong style={{ fontSize: 18 }}>{code}</Text>
+                          {showStockName && stockNames[code] && (
+                            <Text type="secondary" style={{ fontSize: 13, marginLeft: 6 }}>{stockNames[code]}</Text>
+                          )}
+                        </div>
                         <div style={{ fontSize: 20, fontWeight: 'bold' }} className={getPriceColor(data.price.change_percent)}>
                           {data.price.current_price.toFixed(2)}
                         </div>
