@@ -47,6 +47,7 @@ export default function Portfolio() {
   const [importPreview, setImportPreview] = useState<ImportGroupsData | null>(null);
   const [importFileName, setImportFileName] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'code' | 'code_name'>('code');
   const [filterMinChange, setFilterMinChange] = useState<number | null>(null);
   const [filterMaxChange, setFilterMaxChange] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -838,7 +839,12 @@ export default function Portfolio() {
             关闭
           </Button>,
           <Button key="copy" type="primary" icon={<CopyOutlined />} onClick={() => {
-            const text = currentGroup?.stocks.join('\n') || '';
+            const text = currentGroup?.stocks.map(code => {
+              if (exportFormat === 'code_name' && stockNames[code]) {
+                return `${code},${stockNames[code]}`;
+              }
+              return code;
+            }).join('\n') || '';
             navigator.clipboard.writeText(text).then(() => {
               message.success('已复制到剪贴板');
             }).catch(() => {
@@ -865,8 +871,20 @@ export default function Portfolio() {
                 <Text type="secondary">（{currentGroup.stocks.length}只）</Text>
               </Space>
             </div>
+            <div style={{ marginBottom: 12 }}>
+              <Text type="secondary" style={{ marginRight: 8 }}>导出格式：</Text>
+              <Radio.Group value={exportFormat} onChange={e => setExportFormat(e.target.value)} size="small">
+                <Radio value="code">仅代码</Radio>
+                <Radio value="code_name">代码+名称</Radio>
+              </Radio.Group>
+            </div>
             <TextArea
-              value={currentGroup.stocks.join('\n')}
+              value={currentGroup.stocks.map(code => {
+                if (exportFormat === 'code_name' && stockNames[code]) {
+                  return `${code},${stockNames[code]}`;
+                }
+                return code;
+              }).join('\n')}
               readOnly
               rows={10}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
